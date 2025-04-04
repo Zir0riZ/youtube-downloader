@@ -21,32 +21,37 @@ def download_single_video(video_url):
             video_info = ydl.extract_info(video_url, download=False)
             video_title = video_info.get('title', 'Untitled')
             video_path = f"{video_title}.mp4"
-            
+            expected_size = video_info.get('filesize_approx') or video_info.get('filesize')
+
             if os.path.exists(video_path):
-                file_size = os.path.getsize(video_path)
-                if file_size > 100 * 1024: 
-                    print(f"Skipping: {video_title} (already downloaded, size: {file_size} bytes)")
+                current_size = os.path.getsize(video_path)
+                if expected_size and current_size >= expected_size:
+                    print(f"Skipping: {video_title} (complete, size: {current_size} bytes)")
                     return
                 else:
-                    print(f"Resuming: {video_title} (incomplete file detected)")
+                    print(f"Resuming: {video_title} (incomplete, current: {current_size}, expected: {expected_size} bytes)")
             else:
                 print(f"Starting: {video_title}")
 
             ydl.download([video_url])
             
-            if os.path.exists(video_path) and os.path.getsize(video_path) > 100 * 1024:
-                print(f"Finished: {video_title}")
+            if os.path.exists(video_path):
+                final_size = os.path.getsize(video_path)
+                if expected_size and final_size >= expected_size:
+                    print(f"Finished: {video_title}")
+                else:
+                    print(f"Warning: {video_title} incomplete (final: {final_size}, expected: {expected_size} bytes)")
             else:
-                print(f"Warning: {video_title} may not have downloaded correctly")
+                print(f"Error: {video_title} download failed")
         
         except Exception as e:
-            print(f"Error downloading video {video_url}: {str(e)}")
+            print(f"Error downloading {video_url}: {str(e)}")
 
 def download_playlist(playlist_url):
     ydl_opts = {
         'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-        'outtmpl': os.path.join('%(folder_name)s', '%(title)s.%(ext)s'), 
-        'merge_output_format': 'mp4', 
+        'outtmpl': os.path.join('%(folder_name)s', '%(title)s.%(ext)s'),
+        'merge_output_format': 'mp4',
         'quiet': False,
         'progress': True,
         'ignoreerrors': True,
@@ -68,14 +73,11 @@ def download_playlist(playlist_url):
             print(f"\nDownloading playlist: {playlist_title}")
 
             if 'entries' not in info or not info['entries']:
-                print("Error: No entries found in playlist data!")
+                print("Error: No entries found in playlist!")
                 return
             
             print(f"Total videos: {len(info['entries'])}")
-            
-            folder_name = ''.join(c for c in playlist_title if c.isalnum() or c in ' -_').strip()
-            if not folder_name:
-                folder_name = "Playlist"
+            folder_name = ''.join(c for c in playlist_title if c.isalnum() or c in ' -_').strip() or "Playlist"
             if not os.path.exists(folder_name):
                 os.makedirs(folder_name)
 
@@ -90,34 +92,33 @@ def download_playlist(playlist_url):
                 video_title = entry.get('title', 'Untitled')
                 video_id = entry.get('id')
                 if not video_id:
-                    print(f"Skipping {video_title}: No video ID found")
+                    print(f"Skipping {video_title}: No video ID")
                     continue
                 
                 video_url = f"https://www.youtube.com/watch?v={video_id}"
                 video_path = os.path.join(folder_name, f"{video_title}.mp4")
-                part_path = os.path.join(folder_name, f"{video_title}.f247.webm.part")
+                expected_size = entry.get('filesize_approx') or entry.get('filesize')
 
                 if os.path.exists(video_path):
-                    file_size = os.path.getsize(video_path)
-                    if file_size > 100 * 1024:
-                        print(f"Skipping: {video_title} (already downloaded, size: {file_size} bytes)")
+                    current_size = os.path.getsize(video_path)
+                    if expected_size and current_size >= expected_size:
+                        print(f"Skipping: {video_title} (complete, size: {current_size} bytes)")
                         continue
                     else:
-                        print(f"Resuming: {video_title} (incomplete mp4 file detected)")
-                elif os.path.exists(part_path):
-                    print(f"Resuming: {video_title} (incomplete .part file detected)")
+                        print(f"Resuming: {video_title} (incomplete, current: {current_size}, expected: {expected_size} bytes)")
                 else:
                     print(f"Starting: {video_title}")
 
-                try:
-                    ydl.download([video_url])
-                    if os.path.exists(video_path) and os.path.getsize(video_path) > 100 * 1024:
+                ydl.download([video_url])
+                
+                if os.path.exists(video_path):
+                    final_size = os.path.getsize(video_path)
+                    if expected_size and final_size >= expected_size:
                         print(f"Finished: {video_title} (item {index} of {len(info['entries'])})")
                     else:
-                        print(f"Warning: {video_title} may not have downloaded correctly")
-                except Exception as e:
-                    print(f"Error downloading {video_title}: {str(e)}")
-                    continue
+                        print(f"Warning: {video_title} incomplete (final: {final_size}, expected: {expected_size} bytes)")
+                else:
+                    print(f"Error: {video_title} download failed")
         
         print(f"Finished downloading playlist: {playlist_title}\n")
         
